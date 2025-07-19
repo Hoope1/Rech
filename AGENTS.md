@@ -25,7 +25,7 @@ This file guides AI agents (e.g. OpenAI Codex) when working with this repository
 * Run `black` with default settings before committing.
 * Keep imports grouped: standard library, third‑party, local modules.
 * Add type hints where practical.
-* Prefer the `logging` module over `print` for future extensions.
+* Prefer the `logging` module over `print`. The script already uses a module level logger.
 
 ---
 
@@ -50,6 +50,7 @@ Before submitting a PR run:
 black Rech.py --check
 flake8 Rech.py
 ```
+The repository provides a `.flake8` configuration setting `max-line-length = 100`.
 
 If you add tests, also run `pytest`.
 
