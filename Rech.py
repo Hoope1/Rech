@@ -33,11 +33,15 @@ Exaktheit:
 from __future__ import annotations
 
 import itertools
+import logging
 import math
 import time
 from collections import defaultdict, namedtuple
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # ---------------------- KONFIGURATION -----------------------
@@ -212,7 +216,9 @@ for _, _, ts in CHAMPION_DATA:
 # Prüfe: Alle in TRAIT_BREAKPOINTS definierten Traits wirklich vorhanden?
 missing_in_champs = [t for t in TRAIT_BREAKPOINTS if t not in all_traits_set]
 if missing_in_champs:
-    print("WARNUNG: Traits in TRAIT_BREAKPOINTS ohne Champion:", missing_in_champs)
+    logger.warning(
+        "WARNUNG: Traits in TRAIT_BREAKPOINTS ohne Champion: %s", missing_in_champs
+    )
 
 # Traits, die bei Champions vorkommen aber keine Breakpoints definiert haben -> Standard (2..8)
 undefined_break = [t for t in all_traits_set if t not in TRAIT_BREAKPOINTS]
@@ -226,8 +232,8 @@ T = len(TRAITS)
 # Maximal relevante Zählung (Deckel) pro Trait -> letzter Breakpoint
 TRAIT_CAP = [max(TRAIT_BREAKPOINTS[t]) for t in TRAITS]
 
-# Precompute LEVEL_FROM_COUNT: count -> levelValue (hier direkt Weight; wenn feinere Level nötig, anpassen)
-# Für Zählungen zwischen Breakpoints interpolieren wir *nicht* (einfach vorige Stufe).
+# Precompute LEVEL_FROM_COUNT: count -> levelValue (hier direkt Weight)
+# Für Zählungen zwischen Breakpoints interpolieren wir *nicht*, sondern nutzen die vorherige Stufe.
 LEVEL_VALUE = [
     [0.0] * (cap + 1) for cap in TRAIT_CAP
 ]  # LEVEL_VALUE[traitIndex][count] -> Score-Beitrag dieses Traits
@@ -272,8 +278,8 @@ for idx, (name, cost, traits) in enumerate(CHAMPION_DATA):
 
 N = len(CHAMPIONS)
 if N > 64:
-    print("HINWEIS: N > 64 – Bitmask passt noch (Python int), kein Problem.")
-print(f"Champions geladen: {N} | Traits: {T}")
+    logger.info("HINWEIS: N > 64 – Bitmask passt noch (Python int), kein Problem.")
+logger.info(f"Champions geladen: {N} | Traits: {T}")
 
 # Aufteilen in zwei Hälften (balanced)
 mid = N // 2
@@ -320,12 +326,6 @@ def compute_score(
 Signature = namedtuple("Signature", ("size", "cost", "high", "trait_counts", "bitmask"))
 
 
-def capped_counts_add(dst: List[int], trait_ids: Tuple[int, ...]):
-    for ti in trait_ids:
-        if dst[ti] < TRAIT_CAP[ti]:
-            dst[ti] += 1
-
-
 def enumerate_half(champs: List[Champion], label: str):
     """
     Erzeugt alle Teilmengen Größe 0..TEAM_SIZE.
@@ -360,10 +360,16 @@ def enumerate_half(champs: List[Champion], label: str):
                 pct = processed / total_target * 100
                 rate = processed / (now - start + 1e-9)
                 eta = (total_target - processed) / rate if rate > 0 else 0
-                print(
-                    f"[{label}] {pct:5.2f}% k={k} subs={processed:,}/{total_target:,} "
-                    f"rate={rate:,.0f}/s eta={eta/60:5.1f}m "
-                    f"unique={len(compressed):,}"
+                logger.info(
+                    "[%s] %5.2f%% k=%d subs=%s/%s rate=%s/s eta=%5.1fm unique=%s",
+                    label,
+                    pct,
+                    k,
+                    f"{processed:,}",
+                    f"{total_target:,}",
+                    f"{rate:,.0f}",
+                    eta / 60,
+                    f"{len(compressed):,}",
                 )
                 last_log = now
 
@@ -390,9 +396,13 @@ def enumerate_half(champs: List[Champion], label: str):
                 )
 
     dur = time.time() - start
-    print(
-        f"[{label}] DONE in {dur:,.1f}s | raw subsets={total_subsets:,} | unique={len(compressed):,} "
-        f"compression={total_subsets/len(compressed):.1f}x"
+    logger.info(
+        "[%s] DONE in %.1fs | raw subsets=%s | unique=%s compression=%.1fx",
+        label,
+        dur,
+        f"{total_subsets:,}",
+        f"{len(compressed):,}",
+        total_subsets / len(compressed),
     )
     return list(compressed.values())
 
@@ -424,7 +434,7 @@ def combine_and_search(left_sigs: List[Signature], right_sigs: List[Signature]):
         a = len(left_by_size.get(k, []))
         b = len(right_by_size.get(TEAM_SIZE - k, []))
         total_pairings += a * b
-    print(f"[COMBINE] Erwartete effektive Paarungen: {total_pairings:,}")
+    logger.info(f"[COMBINE] Erwartete effektive Paarungen: {total_pairings:,}")
 
     best_list: List[BestTeam] = []
     best_floor = -1e18
@@ -454,19 +464,14 @@ def combine_and_search(left_sigs: List[Signature], right_sigs: List[Signature]):
                 now = time.time()
                 if now - last_log >= LOG_INTERVAL_SECONDS:
                     pct = processed_pairs / total_pairings * 100
-                    rate = processed_pairs / (
-                        now - last_log + LOG_INTERVAL_SECONDS
-                    )  # glättung
-                    elapsed = now - start_global
-                    eta = (
-                        (total_pairings - processed_pairs) / (processed_pairs / elapsed)
-                        if processed_pairs > 0
-                        else 0
-                    )
                     virt_cov = processed_pairs / math.comb(N, TEAM_SIZE) * 100
-                    print(
-                        f"[PROGRESS] {pct:6.3f}% pairs={processed_pairs:,}/{total_pairings:,} "
-                        f"virt_raw≈{virt_cov:.4f}% floor={best_floor:.2f}"
+                    logger.info(
+                        "[PROGRESS] %6.3f%% pairs=%s/%s virt_raw≈%.4f%% floor=%.2f",
+                        pct,
+                        f"{processed_pairs:,}",
+                        f"{total_pairings:,}",
+                        virt_cov,
+                        best_floor,
                     )
                     last_log = now
 
@@ -500,9 +505,12 @@ def combine_and_search(left_sigs: List[Signature], right_sigs: List[Signature]):
                     if len(best_list) > TOP_K:
                         best_list = best_list[:TOP_K]
 
-                    print(
-                        f"[BEST] Score={score:.2f} Cost={total_cost} "
-                        f"Floor={best_floor:.2f} (Imp#{improvements})"
+                    logger.info(
+                        "[BEST] Score=%.2f Cost=%d Floor=%.2f (Imp#%d)",
+                        score,
+                        total_cost,
+                        best_floor,
+                        improvements,
                     )
 
     return best_list
@@ -531,8 +539,13 @@ def summarize_traits(trait_counts: Tuple[int, ...]) -> str:
 # --------------------------- MAIN ---------------------------
 # ============================================================
 start_global = time.time()
-print(
-    f"=== START Meet-in-the-Middle | N={N} | TEAM_SIZE={TEAM_SIZE} | Raw Combos=C({N},{TEAM_SIZE})={math.comb(N,TEAM_SIZE):,} ==="
+logger.info(
+    "=== START Meet-in-the-Middle | N=%d | TEAM_SIZE=%d | Raw Combos=C(%d,%d)=%s ===",
+    N,
+    TEAM_SIZE,
+    N,
+    TEAM_SIZE,
+    f"{math.comb(N, TEAM_SIZE):,}",
 )
 
 # Phase 1
@@ -548,19 +561,26 @@ combine_dur = time.time() - combine_start
 
 total_dur = time.time() - start_global
 
-print(
-    f"\n=== FERTIG in {total_dur/60:.2f} min (Combine Phase {combine_dur/60:.2f} min) ==="
+logger.info(
+    "\n=== FERTIG in %.2f min (Combine Phase %.2f min) ===",
+    total_dur / 60,
+    combine_dur / 60,
 )
-print(f"Top {len(best_teams)} Teams:")
+logger.info("Top %d Teams:", len(best_teams))
 
 for rank, bt in enumerate(best_teams, start=1):
     names = bitmask_to_team(bt.bitmask)
-    print(
-        f"{rank:2d}. Score={bt.score:.2f} Cost={bt.cost:2d} High={bt.high} | Traits: {summarize_traits(bt.trait_counts)}"
+    logger.info(
+        "%2d. Score=%.2f Cost=%2d High=%d | Traits: %s",
+        rank,
+        bt.score,
+        bt.cost,
+        bt.high,
+        summarize_traits(bt.trait_counts),
     )
-    print("    " + ", ".join(names))
+    logger.info("    %s", ", ".join(names))
 
-print(
-    "\nHinweis: Passe compute_score() und LEVEL_WEIGHT / Parameter an dein Original an, "
-    "damit die Score-Werte exakt den bisherigen entsprechen."
+logger.info(
+    "\nHinweis: Passe compute_score() und LEVEL_WEIGHT / Parameter an dein Original an,"
+    " damit die Score-Werte exakt den bisherigen entsprechen."
 )
