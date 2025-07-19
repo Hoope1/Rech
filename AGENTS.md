@@ -1,134 +1,58 @@
 # AGENTS.md
 
-Diese Datei leitet AI-Agenten (z. B. OpenAI Codex) beim Arbeiten mit diesem Python-Projekt an und beschreibt Projektstruktur, Codierungs­konventionen, Testanforderungen, PR-Richtlinien und programmatische Prüfungen.
+This file guides AI agents (e.g. OpenAI Codex) when working with this repository. The project currently consists of a single Python script containing the full optimizer logic.
 
 ---
 
 ## 1. Project Structure
 
 ```
-/ (Projekt-Root)
-├─ src/
-│   └─ optimizer.py      # Meet-in-the-Middle Optimizer für TFT Set 14
-├─ tests/
-│   └─ test_optimizer.py # Unit- und Integrationstests
-├─ pyproject.toml        # Projekt-Konfiguration (Build, Format, Linter, Test)
-├─ README.md             # Kurzbeschreibung und Benutzer­anleitung
-└─ AGENTS.md             # Diese Datei
+/ (repository root)
+├─ Rech.py   # meet-in-the-middle optimizer
+├─ README.md # short description
+└─ AGENTS.md # guidelines for contributors
 ```
 
-* **`src/optimizer.py`**: Hauptskript mit der MiM-Logik, Konfigurations­parametern, Datenblöcken und der `main()`-Routine.
-* **`tests/`**: Testfälle für einzelne Funktionen (`compute_score`, `enumerate_half`, `combine_and_search`, etc.).
-* **`pyproject.toml`**: Definiert Abhängigkeiten, Tool-Konfigurationen für pytest, black, flake8, mypy.
-* **`README.md`**: Überblick, Beispiel­aufrufe und Hinweise zur Anpassung (z. B. `CHAMPION_DATA`, `LEVEL_WEIGHT`).
+* **`Rech.py`**: standalone script implementing the optimizer including configuration, data blocks and the `main` section.
+* **`README.md`**: minimal top‑level description.
+* **`AGENTS.md`**: the document you are currently reading.
 
 ---
 
 ## 2. Coding Conventions
 
-* **Sprache**: Python 3.10+
-* **Formatierung**: Verwende `black` (88 Zeichen Breite) und formatiere vor jedem Commit.
-* **Typhinweise**: Vollständige Type-Hinweise überall; `mypy` sollte ohne Fehler laufen.
-* **Linting**: `flake8` mit Plugins für Typhinweise (`flake8‑annotations`) und Import­optimierung.
-* **Docstrings**: PEP 257-konforme Docstrings für alle Module, Klassen und public-Funktionen.
-* **Imports**: Sortiert mit `isort` (stdlib, Drittanbieter, lokale Module).
-* **Logging**: Nutze das `logging`-Modul statt `print` für alle Ausgaben; konfiguriere Logger im `main()`.
-
-Beispiel in `src/optimizer.py`:
-
-```python
-import logging
-from typing import List, Tuple
-# ...
-
-def compute_score(...):
-    """
-    Berechnet den Score anhand trait_counts, cost und high_cost_units.
-    """
-    ...
-```
+* Target **Python 3.10+**.
+* Run `black` with default settings before committing.
+* Keep imports grouped: standard library, third‑party, local modules.
+* Add type hints where practical.
+* Prefer the `logging` module over `print` for future extensions.
 
 ---
 
 ## 3. Testing Requirements
 
-* **Test-Framework**: `pytest` (Version ≥7.0)
-* **Test-Ordner**: Alle Tests in `tests/` mit `test_`-Präfix.
-* **Coverage**: Mindestens 90 % Abdeckung für Kernelemente (`compute_score`, `enumerate_half`, `combine_and_search`, `bitmask_to_team`, `summarize_traits`).
-* **Fixtures**: Verwende `pytest.fixture` zum Aufsetzen wiederverwendbarer Szenarien.
-* **Parametrisierte Tests**: Für unterschiedliche Konfigurations­kombinationen (z. B. `TEAM_SIZE`, `HIGH_COST_THRESHOLD`).
-
-Beispiel in `tests/test_optimizer.py`:
-
-```python
-import pytest
-from src.optimizer import compute_score
-
-@ pytest.mark.parametrize(
-    "trait_counts,total_cost,high_cost_units,expected",
-    [([0,2,0], 10, 1, 2.5), ...]
-)
-def test_compute_score_linear_use(...):
-    assert compute_score(trait_counts, total_cost, high_cost_units) == pytest.approx(expected)
-```
+At the moment there are no automated tests. If you add features, also create tests under a new `tests/` directory using `pytest`.
 
 ---
 
 ## 4. PR Guidelines
 
-* **Branch-Namen**: `feature/<kurz-beschreibung>`, `fix/<kurz-beschreibung>`.
-* **Commit-Messages**:
-
-  * Format: `<Typ>(Scope): Kurze Beschreibung`
-  * Typen: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`.
-* **PR-Beschreibung**:
-
-  1. **Motivation** – Warum diese Änderung?
-  2. **Lösung** – Kurze Zusammenfassung der Implementierung.
-  3. **Test** – Wie wurde getestet?
-* **Review-Checks**:
-
-  * Alle Tests müssen grün sein.
-  * `black`, `flake8` und `mypy` müssen fehlerfrei durchlaufen.
-  * Coverage darf nicht sinken.
-
-**Beispiel-PR**:
-
-```
-feat(optimizer): add progress ETA logging
-
-- Implemented logging of ETA in enumerate_half()
-- Added tests for progress formatting
-```
+* Commit messages may follow `feat:`, `fix:`, `docs:` etc.
+* PR descriptions should briefly mention the motivation, the solution and how it was tested.
 
 ---
 
 ## 5. Programmatic Checks
 
-In CI (z. B. GitHub Actions) automatisch ausführen:
+Before submitting a PR run:
 
-1. **Format**: `black --check src tests`
-2. **Imports**: `isort --check src tests`
-3. **Linting**: `flake8 src tests`
-4. **Types**: `mypy src`
-5. **Tests & Coverage**:
-
-   ```bash
-   pytest --maxfail=1 --disable-warnings --cov=src --cov-fail-under=90
-   ```
-
-**Optional**: Integriere `pre-commit` mit den Hooks für Black, isort, flake8 und mypy. Beispiel `pyproject.toml`:
-
-```toml
-[tool.pre-commit]
-repos = [
-  { repo = "https://github.com/psf/black", rev = "22.3.0", hooks = [{ id = "black" }] },
-  { repo = "https://github.com/PyCQA/isort", rev = "5.10.1", hooks = [{ id = "isort" }] },
-  { repo = "https://github.com/pycqa/flake8", rev = "4.0.1", hooks = [{ id = "flake8" }] },
-  { repo = "https://github.com/pre-commit/mirrors-mypy", rev = "v0.982", hooks = [{ id = "mypy" }] },
-]
+```bash
+black Rech.py --check
+flake8 Rech.py
 ```
+
+If you add tests, also run `pytest`.
 
 ---
 
-*Hinweis*: Passe `CHAMPION_DATA`, `LEVEL_WEIGHT` und `compute_score()` genau an deine Spiel­daten und bisherigen Score-Formeln an, um exakte Reproduzierbarkeit sicherzustellen.
+*Note*: update the `CHAMPION_DATA` section in `Rech.py` and adjust `compute_score()` to match your desired scoring rules.
