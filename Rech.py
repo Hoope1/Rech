@@ -36,6 +36,9 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+import hashlib
+import subprocess
+
 import requests
 
 # -----------------------------
@@ -93,6 +96,84 @@ except Exception:
 
 
 # -----------------------------
+# GLOBAL CONSTANTS
+# -----------------------------
+HTTP_TIMEOUT = 8  # seconds for all network requests
+SET14_CACHE_HASH_FILE = "tft_set14_cache.json.gz.sha256"
+SNAPSHOT_FILE = "tft_set14_snapshot.json"
+
+
+def compute_sha256(data: Any) -> str:
+    """Return SHA256 hex digest for the given JSON-serialisable data."""
+    blob = json.dumps(data, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
+
+def get_json_with_retries(
+    url: str, retries: int = 3, timeout: int = HTTP_TIMEOUT
+) -> Optional[Dict]:
+    delay = 0.5
+    for _ in range(retries):
+        try:
+            r = requests.get(url, timeout=timeout)
+            if r.status_code in (403, 404):
+                return None
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            time.sleep(delay)
+            delay *= 2
+    return None
+
+
+def log_diff(old_data: Dict, new_data: Dict) -> None:
+    lines = []
+    old_map = {c.get("apiName"): c for c in old_data.get("champions", [])}
+    new_map = {c.get("apiName"): c for c in new_data.get("champions", [])}
+    for cid in sorted(set(old_map) | set(new_map)):
+        oc = old_map.get(cid)
+        nc = new_map.get(cid)
+        if oc and not nc:
+            lines.append(f"Removed champion {cid}")
+        elif nc and not oc:
+            lines.append(f"Added champion {cid}")
+        elif oc and nc:
+            if oc.get("cost") != nc.get("cost") or sorted(
+                oc.get("traits", [])
+            ) != sorted(nc.get("traits", [])):
+                lines.append(
+                    "Changed %s: cost %s -> %s traits %s -> %s"
+                    % (
+                        cid,
+                        oc.get("cost"),
+                        nc.get("cost"),
+                        oc.get("traits"),
+                        nc.get("traits"),
+                    )
+                )
+    if lines:
+        with open("tft_set14_diff.log", "a", encoding="utf-8") as f:
+            for ln in lines:
+                f.write(ln + "\n")
+
+
+def write_run_meta(param_set: str) -> None:
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        commit = "unknown"
+    meta = {
+        "commit": commit,
+        "timestamp": time.time(),
+        "param_set": param_set,
+    }
+    with open("run_meta.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+
+
+# -----------------------------
 # CONFIG & PARAMETER SETS
 # -----------------------------
 # Aktive Parameter-Sets – Du kannst leicht umschalten.
@@ -143,6 +224,8 @@ DD_VERSION_CACHE_FILE = "dd_version_cache.json"
 SET14_CACHE_FILE = "tft_set14_cache.json.gz"
 
 EMBEDDED_SET14_SNAPSHOT = {
+    "snapshot_version": 1,
+    "snapshot_date": "2024-01-01",
     "champions": [
         {
             "apiName": "TFT_TestCh1",
@@ -183,14 +266,16 @@ def get_latest_ddragon_version(timeout=8) -> Optional[str]:
     return None
 
 
-def load_set14_data(timeout=10) -> Tuple[List[Dict], Dict[str, List[int]]]:
+def load_set14_data(
+    force_refresh: bool = False, timeout: int = HTTP_TIMEOUT
+) -> Tuple[List[Dict], Dict[str, List[int]]]:
     """
     Lädt Champions + Traits (Set 14) aus Data Dragon.
     Rückgabe:
         champions: List[dict] – Felder: id, name, cost, traits (Tuple[str,...])
         trait_breakpoints: Dict[str, List[int]] – Liste der minUnits Breakpoints
     """
-    version = get_latest_ddragon_version() or "latest"
+    version = get_latest_ddragon_version(timeout=timeout) or "latest"
     urls = [
         f"https://ddragon.leagueoflegends.com/cdn/{version}/data/en_US/tft/set14.json",
         f"https://ddragon.leagueoflegends.com/cdn/{version}/data/en_US/tft-set14.json",
@@ -198,41 +283,60 @@ def load_set14_data(timeout=10) -> Tuple[List[Dict], Dict[str, List[int]]]:
         f"https://ddragon.leagueoflegends.com/cdn/{version}/data/en_US/tft-set13.json",
     ]
     data = None
-    for url in urls:
+    if not force_refresh and os.path.isfile(SET14_CACHE_FILE):
         try:
-            r = requests.get(url, timeout=timeout)
-            if r.status_code in (403, 404):
-                continue
-            r.raise_for_status()
-            data = r.json()
-            with gzip.open(SET14_CACHE_FILE, "wt", encoding="utf-8") as gz:
-                json.dump(data, gz)
-            break
-        except Exception:
-            continue
-    if data is None:
-        try:
-            r = requests.get(
-                "https://raw.communitydragon.org/latest/cdragon/tft/en_us.json",
-                timeout=timeout,
-            )
-            r.raise_for_status()
-            cd = r.json().get("sets", {}).get("14", {})
-            if cd:
-                data = {
-                    "champions": cd.get("champions", []),
-                    "traits": cd.get("traits", []),
-                }
-        except Exception:
-            pass
-    if data is None and os.path.isfile(SET14_CACHE_FILE):
-        try:
+            with open(SET14_CACHE_HASH_FILE, "r", encoding="utf-8") as hf:
+                expected = hf.read().strip()
             with gzip.open(SET14_CACHE_FILE, "rt", encoding="utf-8") as gz:
-                data = json.load(gz)
+                cached = json.load(gz)
+            if compute_sha256(cached) == expected:
+                data = cached
         except Exception:
             data = None
     if data is None:
-        data = EMBEDDED_SET14_SNAPSHOT
+        for url in urls:
+            data = get_json_with_retries(url, timeout=timeout)
+            if data:
+                log_diff(EMBEDDED_SET14_SNAPSHOT, data)
+                with gzip.open(SET14_CACHE_FILE, "wt", encoding="utf-8") as gz:
+                    json.dump(data, gz)
+                with open(SET14_CACHE_HASH_FILE, "w", encoding="utf-8") as hf:
+                    hf.write(compute_sha256(data))
+                with open(SNAPSHOT_FILE, "w", encoding="utf-8") as sf:
+                    json.dump(data, sf, indent=2)
+                break
+    if data is None:
+        cd_urls = [
+            "https://raw.communitydragon.org/latest/cdragon/tft/en_us.json",
+            "https://raw.communitydragon.org/pbe/cdragon/tft/en_us.json",
+        ]
+        for cu in cd_urls:
+            cd_json = get_json_with_retries(cu, timeout=timeout)
+            if not cd_json:
+                continue
+            cd = cd_json.get("sets", {}).get("14")
+            if not cd:
+                logging.warning(
+                    "[WARN_DATA] CommunityDragon sets->14 missing for %s", cu
+                )
+                continue
+            data = {
+                "champions": cd.get("champions", []),
+                "traits": cd.get("traits", []),
+            }
+            log_diff(EMBEDDED_SET14_SNAPSHOT, data)
+            with open(SNAPSHOT_FILE, "w", encoding="utf-8") as sf:
+                json.dump(data, sf, indent=2)
+            break
+    if data is None:
+        if not force_refresh and os.path.isfile(SET14_CACHE_FILE):
+            try:
+                with gzip.open(SET14_CACHE_FILE, "rt", encoding="utf-8") as gz:
+                    data = json.load(gz)
+            except Exception:
+                data = None
+        if data is None:
+            data = EMBEDDED_SET14_SNAPSHOT
     champs_raw = data.get("champions", [])
     traits_raw = data.get("traits", [])
     champions: List[Dict] = []
@@ -278,6 +382,17 @@ def normalize_and_tag_variants(
     for c in champions:
         c["base_index"] = base_index[c["base"]]
     return champions
+
+
+def validate_champions(champions: List[Dict]) -> List[Dict]:
+    """Filter or warn about champions without traits."""
+    valid = []
+    for ch in champions:
+        if not ch["traits"]:
+            logging.warning("[WARN_DATA] %s has no traits", ch.get("name"))
+            continue
+        valid.append(ch)
+    return valid
 
 
 # -----------------------------
@@ -864,6 +979,9 @@ def parse_args():
     parser.add_argument("--top-k", type=int, default=20, help="Number of teams")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed")
     parser.add_argument("--verbose", type=int, default=1, help="Verbosity 0-2")
+    parser.add_argument(
+        "--force-refresh", action="store_true", help="Ignore cached data"
+    )
     return parser.parse_args()
 
 
@@ -875,6 +993,15 @@ def main():
         ],
         format="%(message)s",
     )
+    write_run_meta(args.param_set)
+    logging.info(f"Python {sys.version.split()[0]}")
+    try:
+        import numba
+        import numpy
+
+        logging.info(f"numba {numba.__version__}, numpy {numpy.__version__}")
+    except Exception:
+        pass
     random.seed(args.seed)
 
     # 1) Lade Parameter
@@ -885,11 +1012,12 @@ def main():
     params = ScoreParams(**param_cfg)
 
     print(f"== Lade Data Dragon (Set14) – Aktives Param Set: {ACTIVE_PARAM_SET} ==")
-    champions, trait_breakpoints = load_set14_data()
+    champions, trait_breakpoints = load_set14_data(force_refresh=args.force_refresh)
     print(f"Geladen: {len(champions)} Champions, {len(trait_breakpoints)} Traits")
 
     # 2) Normalisieren + Varianten markieren
     champions = normalize_and_tag_variants(champions, params.HIGH_COST_THRESHOLD)
+    champions = validate_champions(champions)
     print("Variante/High Tags gesetzt.")
 
     # 3) Trait Index + Level Tabellen
