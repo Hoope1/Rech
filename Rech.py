@@ -35,6 +35,7 @@ import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+from itertools import count
 
 import hashlib
 import subprocess
@@ -766,7 +767,8 @@ def combine_half_signatures(
     Sehr vereinfachte Variante (keine starken Bounds) – demonstriert Integration.
     """
     TEAM_SIZE = params.TEAM_SIZE
-    best_heap: List[Tuple[float, Dict[str, Any]]] = []
+    best_heap: List[Tuple[float, int, Dict[str, Any]]] = []
+    unique_counter = count()
     best_floor = -1e18
 
     # Sortiere halfB nach trait_value für leichte heuristische Bound (optional)
@@ -824,12 +826,12 @@ def combine_half_signatures(
                 )
                 import heapq
 
-                heapq.heappush(best_heap, (score, entry))
+                heapq.heappush(best_heap, (score, next(unique_counter), entry))
                 if len(best_heap) > top_k:
                     heapq.heappop(best_heap)
                 best_floor = best_heap[0][0]
     print(f"Combine Iterationen: {iter_total}")
-    return [e for _, e in sorted(best_heap, key=lambda x: x[0], reverse=True)]
+    return [e for _, _, e in sorted(best_heap, key=lambda x: x[0], reverse=True)]
 
 
 # -----------------------------
