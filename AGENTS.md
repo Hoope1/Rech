@@ -14,7 +14,7 @@ This file provides guidance for AI agents (for example OpenAI Codex) when workin
 └─ .flake8    # flake8 configuration
 ```
 
-`Rech.py` downloads champion and trait data, defines two parameter sets (`P1`, `P2`) and contains helper functions for rescoring and progress reporting.
+`Rech.py` downloads champion and trait data, defines two parameter sets (`P1`, `P2`) and contains helper functions for rescoring and progress reporting. Parameters can now be overridden via CLI flags.
 
 ---
 
@@ -57,9 +57,10 @@ If a `tests/` directory is present also execute `pytest`.
 
 ## 6. Customisation Tips
 
-- Switch scoring presets by changing `ACTIVE_PARAM_SET` in `Rech.py`.
+- Switch scoring presets using the `--param-set` CLI flag (or change `ACTIVE_PARAM_SET`).
 - Adjust scoring behaviour via the `ScoreParams` dataclass or by modifying `compute_team_components()`.
 - Champion and trait data is downloaded from Data Dragon and cached in `dd_version_cache.json` and `tft_set14_cache.json.gz`.
 - The script automatically rescans `tft_full_bruteforce_results.json` or `.csv` files and prints score decompositions.
+- CLI flags like `--team-size`, `--top-k` and `--seed` allow quick parameter experiments.
 
 ---

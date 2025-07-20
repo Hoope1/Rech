@@ -9,7 +9,7 @@ This repository contains `Rech.py`, a Python 3.10+ script implementing a meet-in
 - **Trait-based scoring**: configurable weights for trait breakpoints plus bonuses for high-cost units and gold utilisation.
 - **Progress reporting**: uses `tqdm` if available, otherwise a simple fallback progress bar.
 - **Result re-scoring**: existing JSON or CSV results named `tft_full_bruteforce_results.*` are rescored on start.
-- **Parameter sets**: two predefined parameter sets (`P1` and `P2`); select one via `ACTIVE_PARAM_SET`.
+- **Parameter sets**: two predefined parameter sets (`P1` and `P2`) selectable via `--param-set`.
 
 ## Requirements
 
@@ -27,10 +27,10 @@ pip install requests tqdm numba black flake8
 
 1. Run the optimizer:
    ```bash
-   python Rech.py
+   python Rech.py --param-set P1 --top-k 20 --team-size 8 --seed 123 --verbose 1
    ```
    The script downloads the latest Set 14 data and stores a cache in `tft_set14_cache.json.gz`.
-2. Adjust `ACTIVE_PARAM_SET` or modify `compute_team_components()` if you want to change scoring behaviour.
+2. Modify `--param-set` or edit `compute_team_components()` if you want to change scoring behaviour.
 3. Existing result files are detected automatically and rescored.
 
 The best teams are printed to the console and written to `demo_mim_top_combined.json`.

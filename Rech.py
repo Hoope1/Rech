@@ -23,9 +23,11 @@ im selben Verzeichnis wird automatisch erkannt und neu bewertet.
 
 from __future__ import annotations
 
+import argparse
 import csv
 import gzip
 import json
+import logging
 import os
 import random
 import re
@@ -540,11 +542,11 @@ def enumerate_half_signatures(
     trait_index: Dict[str, int],
     LEVEL_VALUE: List[List[float]],
     params: ScoreParams,
-    max_size: int,
+    exact_size: int,
     side: str = "A",
 ) -> List[HalfSignature]:
     """
-    Erzeugt alle Subsets bis 'max_size' (oder genau max_size – hier inclusive) der Championsliste
+    Erzeugt alle Subsets genau der Größe ``exact_size`` der Championsliste
     (dies ist bewusst reduziert – für sehr große N bräuchtest Du zusätzliche Filter).
     """
     n = len(champions)
@@ -556,10 +558,6 @@ def enumerate_half_signatures(
         indices = list(range(n // 2, n))
 
     T = len(trait_index)
-    trait_names_sorted = [None] * T
-    for t, i in trait_index.items():
-        trait_names_sorted[i] = t
-
     # Schnelle Zugriffe
     champ_cost = [c["cost"] for c in champions]
     champ_high = [1 if c["high"] else 0 for c in champions]
@@ -578,26 +576,26 @@ def enumerate_half_signatures(
         base_mask: int,
         trait_counts: List[int],
     ):
-        # Aufzeichnen
-        # Trait-Value berechnen
-        trait_val = 0.0
-        for ti in range(T):
-            cnt = trait_counts[ti]
-            if cnt >= len(LEVEL_VALUE[ti]):
-                cnt = len(LEVEL_VALUE[ti]) - 1
-            trait_val += LEVEL_VALUE[ti][cnt]
-        signatures.append(
-            HalfSignature(
-                idxs=tuple(chosen),
-                size=size,
-                cost=cost,
-                high=high,
-                base_mask=base_mask,
-                trait_counts=tuple(trait_counts),
-                trait_value=trait_val,
+        if size == exact_size:
+            trait_val = 0.0
+            for ti in range(T):
+                cnt = trait_counts[ti]
+                if cnt >= len(LEVEL_VALUE[ti]):
+                    cnt = len(LEVEL_VALUE[ti]) - 1
+                trait_val += LEVEL_VALUE[ti][cnt]
+            signatures.append(
+                HalfSignature(
+                    idxs=tuple(chosen),
+                    size=size,
+                    cost=cost,
+                    high=high,
+                    base_mask=base_mask,
+                    trait_counts=tuple(trait_counts),
+                    trait_value=trait_val,
+                )
             )
-        )
-        if size == max_size:
+            return
+        if size > exact_size:
             return
         for pos in range(start, len(indices)):
             ci = indices[pos]
@@ -630,8 +628,7 @@ def enumerate_half_signatures(
     # Für gleiche (size, high, cost_bucket) – behalte max trait_value.
     trimmed: Dict[Tuple[int, int, int], HalfSignature] = {}
     for sig in signatures:
-        cost_bucket = sig.cost // 1  # feiner justierbar
-        key = (sig.size, sig.high, cost_bucket)
+        key = (sig.size, sig.high, sig.cost)
         prev = trimmed.get(key)
         if (prev is None) or (sig.trait_value > prev.trait_value):
             trimmed[key] = sig
@@ -654,7 +651,7 @@ def combine_half_signatures(
     Sehr vereinfachte Variante (keine starken Bounds) – demonstriert Integration.
     """
     TEAM_SIZE = params.TEAM_SIZE
-    best: List[Dict[str, Any]] = []
+    best_heap: List[Tuple[float, Dict[str, Any]]] = []
     best_floor = -1e18
 
     # Sortiere halfB nach trait_value für leichte heuristische Bound (optional)
@@ -710,12 +707,14 @@ def combine_half_signatures(
                     leftover_penalty=leftover_pen,
                     score=score,
                 )
-                best.append(entry)
-                best.sort(key=lambda x: x["score"], reverse=True)
-                if len(best) > top_k:
-                    best = best[:top_k]
-                best_floor = best[-1]["score"]
-    return best
+                import heapq
+
+                heapq.heappush(best_heap, (score, entry))
+                if len(best_heap) > top_k:
+                    heapq.heappop(best_heap)
+                best_floor = best_heap[0][0]
+    print(f"Combine Iterationen: {iter_total}")
+    return [e for _, e in sorted(best_heap, key=lambda x: x[0], reverse=True)]
 
 
 # -----------------------------
@@ -856,9 +855,33 @@ def quick_parameter_sweep(
 # -----------------------------
 # MAIN EXECUTION
 # -----------------------------
+def parse_args():
+    parser = argparse.ArgumentParser(description="TFT Set 14 Optimizer")
+    parser.add_argument("--team-size", type=int, help="Team size override")
+    parser.add_argument(
+        "--param-set", choices=list(PARAM_SETS.keys()), default=ACTIVE_PARAM_SET
+    )
+    parser.add_argument("--top-k", type=int, default=20, help="Number of teams")
+    parser.add_argument("--seed", type=int, default=42, help="RNG seed")
+    parser.add_argument("--verbose", type=int, default=1, help="Verbosity 0-2")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    logging.basicConfig(
+        level=[logging.WARNING, logging.INFO, logging.DEBUG][
+            max(0, min(2, args.verbose))
+        ],
+        format="%(message)s",
+    )
+    random.seed(args.seed)
+
     # 1) Lade Parameter
-    param_cfg = PARAM_SETS[ACTIVE_PARAM_SET]
+    param_cfg = PARAM_SETS[args.param_set]
+    if args.team_size:
+        param_cfg = dict(param_cfg)
+        param_cfg["TEAM_SIZE"] = args.team_size
     params = ScoreParams(**param_cfg)
 
     print(f"== Lade Data Dragon (Set14) – Aktives Param Set: {ACTIVE_PARAM_SET} ==")
@@ -906,9 +929,14 @@ def main():
     # 5) Demo Meet-in-the-Middle (klein, damit es schnell läuft)
     #    Passe 'half_size' an – für komplette Suche sind viel stärkere Strategien nötig.
     half_size = params.TEAM_SIZE // 2  # 4 bei 8
-    print(f"\n== Enumeriere Halb-Signaturen (bis Größe {half_size}) ==")
+    print(f"\n== Enumeriere Halb-Signaturen (Größe {half_size}) ==")
     halfA = enumerate_half_signatures(
-        champions, trait_index, LEVEL_VALUE, params, half_size, side="A"
+        champions,
+        trait_index,
+        LEVEL_VALUE,
+        params,
+        half_size,
+        side="A",
     )
     halfB = enumerate_half_signatures(
         champions,
@@ -929,7 +957,7 @@ def main():
         halfB,
         params,
         LEVEL_VALUE_NP if NUMBA_AVAILABLE else LEVEL_VALUE,
-        top_k=20,
+        top_k=args.top_k,
     )
     dur_combine = time.time() - start_combine
     top_combined.sort(key=lambda x: x["score"], reverse=True)
