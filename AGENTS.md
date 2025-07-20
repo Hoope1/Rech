@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file guides AI agents (e.g. OpenAI Codex) when working with this repository. The project currently consists of a single Python script containing the full optimizer logic.
+This file provides guidance for AI agents (for example OpenAI Codex) when working on this repository. The project consists of a single Python script that performs a meet-in-the-middle search on TFT Set 14 data fetched from Riot's Data Dragon.
 
 ---
 
@@ -8,52 +8,58 @@ This file guides AI agents (e.g. OpenAI Codex) when working with this repository
 
 ```
 / (repository root)
-├─ Rech.py   # meet-in-the-middle optimizer
-├─ README.md # short description
-└─ AGENTS.md # guidelines for contributors
+├─ Rech.py    # optimizer logic and entry point
+├─ README.md  # usage and development notes
+├─ AGENTS.md  # this guide for contributors
+└─ .flake8    # flake8 configuration
 ```
 
-* **`Rech.py`**: standalone script implementing the optimizer including configuration, data blocks and the `main` section.
-* **`README.md`**: minimal top‑level description.
-* **`AGENTS.md`**: the document you are currently reading.
+`Rech.py` downloads champion and trait data, defines two parameter sets (`P1`, `P2`) and contains helper functions for rescoring and progress reporting.
 
 ---
 
 ## 2. Coding Conventions
 
-* Target **Python 3.10+**.
-* Run `black` with default settings before committing.
-* Keep imports grouped: standard library, third‑party, local modules.
-* Add type hints where practical.
-* Prefer the `logging` module over `print`. The script already uses a module level logger.
+- Target **Python 3.10+**.
+- Format code using `black`.
+- Lint with `flake8` (max line length 100).
+- Group imports: standard library, third‑party, local.
+- Use type hints where practical.
+- Prefer the `logging` module over `print` for any new output.
 
 ---
 
 ## 3. Testing Requirements
 
-At the moment there are no automated tests. If you add features, also create tests under a new `tests/` directory using `pytest`.
+No automated tests exist yet. If you add new functionality, create tests under `tests/` using `pytest`.
 
 ---
 
-## 4. PR Guidelines
+## 4. Pull Request Guidelines
 
-* Commit messages may follow `feat:`, `fix:`, `docs:` etc.
-* PR descriptions should briefly mention the motivation, the solution and how it was tested.
+- Commit messages may start with `feat:`, `fix:`, `docs:` and similar prefixes.
+- PR descriptions should explain the motivation, the changes and how they were tested.
 
 ---
 
 ## 5. Programmatic Checks
 
-Before submitting a PR run:
+Run the following before submitting a PR:
 
 ```bash
 black Rech.py --check
 flake8 Rech.py
 ```
-The repository provides a `.flake8` configuration setting `max-line-length = 100`.
 
-If you add tests, also run `pytest`.
+If a `tests/` directory is present also execute `pytest`.
 
 ---
 
-*Note*: update the `CHAMPION_DATA` section in `Rech.py` and adjust `compute_score()` to match your desired scoring rules.
+## 6. Customisation Tips
+
+- Switch scoring presets by changing `ACTIVE_PARAM_SET` in `Rech.py`.
+- Adjust scoring behaviour via the `ScoreParams` dataclass or by modifying `compute_team_components()`.
+- Champion and trait data is downloaded from Data Dragon and cached in `dd_version_cache.json` and `tft_set14_cache.json.gz`.
+- The script automatically rescans `tft_full_bruteforce_results.json` or `.csv` files and prints score decompositions.
+
+---
