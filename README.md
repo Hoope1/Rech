@@ -1,36 +1,39 @@
 # Rech
 
-This repository contains a standalone Python 3.10+ script implementing a meet-in-the-middle optimizer for Teamfight Tactics (TFT) Set 14. The tool enumerates all possible teams of a configured size and scores them using customizable rules.
+This repository contains `Rech.py`, a Python 3.10+ script implementing a meet-in-the-middle optimizer for Teamfight Tactics (TFT) Set 14.
 
 ## Features
 
-- **Exact search**: Splits the champion pool into two halves and compresses each side to drastically reduce combinations compared to a brute-force search.
-- **Trait-based scoring**: Flexible weighting for trait breakpoints with optional bonuses for high‑cost units or gold utilisation. A score decomposition helper explains the contributions of each part.
-- **Progress reporting**: Logs progress and improvements while running.
-- **Easily customizable**: Adjust the champion list, trait breakpoints and the scoring function directly in `Rech.py`.
+- **Dynamic data**: champion and trait information is fetched from Riot's Data Dragon and cached locally.
+- **Exact search**: the champion pool is split into two halves and enumerated with basic dominance pruning.
+- **Trait-based scoring**: configurable weights for trait breakpoints plus bonuses for high-cost units and gold utilisation.
+- **Progress reporting**: uses `tqdm` if available, otherwise a simple fallback progress bar.
+- **Result re-scoring**: existing JSON or CSV results named `tft_full_bruteforce_results.*` are rescored on start.
+- **Parameter sets**: two predefined parameter sets (`P1` and `P2`); select one via `ACTIVE_PARAM_SET`.
 
 ## Requirements
 
 - Python **3.10** or newer.
-- Only standard library modules are used. `black` and `flake8` are recommended for formatting and linting.
+- The script only requires the standard library and `requests`. Optional: `tqdm` and `numba` for faster execution.
+- `black` and `flake8` are recommended for development.
 
 Install the optional tools with:
 
 ```bash
-pip install black flake8
+pip install requests tqdm numba black flake8
 ```
 
 ## Usage
 
-1. Edit the `CHAMPION_DATA` block in `Rech.py` so it lists all Set 14 champions with correct traits and costs.
-2. Adjust `TRAIT_BREAKPOINTS` and `compute_score()` to match your desired scoring rules.
-3. Run the optimizer (Numba is used if available):
+1. Run the optimizer:
+   ```bash
+   python Rech.py
+   ```
+   The script downloads the latest Set 14 data and stores a cache in `tft_set14_cache.json.gz`.
+2. Adjust `ACTIVE_PARAM_SET` or modify `compute_team_components()` if you want to change scoring behaviour.
+3. Existing result files are detected automatically and rescored.
 
-```bash
-python Rech.py
-```
-
-The script prints progress information and finally displays the top teams according to your scoring function.
+The best teams are printed to the console and written to `demo_mim_top_combined.json`.
 
 ## Development
 
@@ -41,8 +44,8 @@ black Rech.py --check
 flake8 Rech.py
 ```
 
-If you extend the project with additional features, please also add tests under `tests/` using `pytest`.
+If you extend the project with additional features, add tests under `tests/` using `pytest`.
 
 ## License
 
-This project is provided as-is without warranty. Use and modify it at your own risk.
+This project is provided as-is without warranty.
