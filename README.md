@@ -32,8 +32,10 @@ pip install requests tqdm numba black flake8
    The script downloads the latest Set 14 data and stores a cache in `tft_set14_cache.json.gz`.
 2. Modify `--param-set` or edit `compute_team_components()` if you want to change scoring behaviour.
 3. Existing result files are detected automatically and rescored.
+4. Use `--force-refresh` to ignore cached data and fetch new snapshots.
 
 The best teams are printed to the console and written to `demo_mim_top_combined.json`.
+Metadata about each run is saved to `run_meta.json` (commit hash and timestamp).
 
 ## Development
 
