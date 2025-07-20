@@ -5,7 +5,7 @@ This repository contains a standalone Python 3.10+ script implementing a meet-in
 ## Features
 
 - **Exact search**: Splits the champion pool into two halves and compresses each side to drastically reduce combinations compared to a brute-force search.
-- **Trait-based scoring**: Flexible weighting for trait breakpoints with optional bonuses for high‑cost units or gold utilisation.
+- **Trait-based scoring**: Flexible weighting for trait breakpoints with optional bonuses for high‑cost units or gold utilisation. A score decomposition helper explains the contributions of each part.
 - **Progress reporting**: Logs progress and improvements while running.
 - **Easily customizable**: Adjust the champion list, trait breakpoints and the scoring function directly in `Rech.py`.
 
@@ -24,7 +24,7 @@ pip install black flake8
 
 1. Edit the `CHAMPION_DATA` block in `Rech.py` so it lists all Set 14 champions with correct traits and costs.
 2. Adjust `TRAIT_BREAKPOINTS` and `compute_score()` to match your desired scoring rules.
-3. Run the optimizer:
+3. Run the optimizer (Numba is used if available):
 
 ```bash
 python Rech.py
